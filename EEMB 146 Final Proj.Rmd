@@ -1,0 +1,601 @@
+---
+title: "A 'Hare-y' Situation: Investigating the Effects of Changing Environment in Boreal Forests"
+author: "Abigail Youngblood"
+date: "June 9, 2024"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr) # package for reading in data
+library(tidyverse) # package for data wrangling 
+library(ggplot2) # package for plotting
+library(psych) # NEW package for running pairs.panels()
+library(car)
+library(ggpubr)
+library(multcomp)# NEW package for running post-hoc test
+library(pwr)# NEW package for running power analysis
+library(gridExtra)
+library(psych)
+library(cowplot)
+library(multcomp)
+tinytex::install_tinytex(force = TRUE)
+
+snow <- read.csv("data/coxph_data.csv", stringsAsFactors = TRUE, header = TRUE)
+```
+
+![A snowshoe hare. (Source: NPS).](data/hare.jpg)
+
+
+## Abstract
+
+Snowshoe hares are an essential part of boreal forests, but they face a unique vulnerability to climate change, which puts entire ecosystems in danger. Previous research has demonstrated that maximum snow depth has declined in recent centuries (Peers et al.), which has substantial implications for hare survival. Hares are well-suited for winter camouflage with their white fur, so less snow makes them more susceptible to predation by lynx or coyotes. In this study, I use data collected in boreal forests in Ottawa, Canada, to analyze how significantly snow depth influences survival and how the number of days since snow changes snow depth. To do so, I compared the mean snow depth for surviving hares vs. hares that have died using a two-sample t-test, which generated a significant p-value of 0.01583 – this signifies that the mean snow depth measured where dead hares were found was significantly lower than where live hares were found. Additionally, I created a linear model to examine the relationship between the number of days since snow and snow depth; this test produced a p-value of < 2.2e-16 and a correlation coefficient of -0.17, implying that the number of days since snow and snow depth has a significant negative relationship. Overall, hare populations are highly vulnerable to rising temperatures, which cause snow melt and changing weather frequencies, leading to a decrease in snow depth. As keystone species, hare population decline could have resounding effects on boreal ecosystems as a whole. 
+
+<br>
+
+## Introduction
+
+Climate change interferes with a wide variety of natural processes, and as it progresses, it becomes increasingly urgent to document and understand its impacts on ecological interactions. Boreal forests are particularly susceptible to increasing global temperatures, as boreal ecosystems are well-adapted to cold and wet conditions. In addition, more unpredictable climate variability due to climate change could mean that consistent snow in these places becomes a thing of the past (NASA). Essentially, climate change has massive implications for both the abiotic components of an ecosystem, like the amount of snow per year or the frequency of snowfall, and the biotic aspects, like how well snow-camouflaged animals can survive in an environment with less snow. 
+
+To investigate these impacts, researchers led by Michael Peers of the University of Ottawa set out to gather data in boreal forests, specifically in Ottawa, Canada. Their principal question was whether or not winter snow conditions affect the survival of snowshoe hares, particularly in reference to the impacts of winter conditions on predation success by Canada lynx and coyote. Their goal was to use this data to better predict how climate change will impact cyclic predator-prey relations in these boreal species. This study is critical because snowshoe hares comprise over 50% of prey biomass in North America (Peers et al.), and endangered lynx populations are highly dependent on this keystone prey. When the expected rate of warming in boreal regions is set to be twice as high as in the rest of the world, it is clear that this research is crucial to the fate of the ecosystem (Leblond et al.). 
+
+To consider the biological factors of this study, the researchers captured over 14,000 hares from 2015-2018 (a timeline that spans the natural cycles of incline and decline of hare populations in boreal forests). They marked which hares survived and which died, specifically looking at lynx-predation events. In addition, to look deeper into the environmental factors of the boreal forest, the researchers measured snow depth, snow hardness/compaction, average temperature of the region, minimum temperature of the area, and the days since snow for every hare found. 
+
+For this project, I decided to investigate several questions about the data collected by this research team, so I obtained their data from Data Dryad. Firstly, I looked at whether or not there is a difference in snow depth for the hares that survived versus the hares that died. I hypothesized that there is a lower mean snow depth for the hares that died. Secondly, I wanted to know if the number of days since snow was an effective predictor of snow depth, and my prediction was that snow depth and days since snow had a negative relationship, meaning that as the number of days since snow increases, snow depth decreases. 
+
+<br>
+
+## Exploratory Data Analysis
+
+This dataset was massive and included some variables I wasn't interested in. To start, I created a new dataset that only included what I wanted to analyze: death status, snow depth, and days since snow (Appendix 1.1). To investigate survival, I created two new data frames; one included only the surviving hares and the other only included the dead hares (Appendix 1.1). While the 'died' data was a reasonable size (n = 153), the 'survived' data still had over 14,000 observations, which is too large to do specific tests on, so I created a random sample with the same sample size as the 'died' data so I could make appropriate comparisons between the two (Appendix 1.1). I then combined these two random samples into a single dataset to plot both on a single plot. 
+
+```{r, include = FALSE}
+snow_new <- snow %>% #making new dataset
+  dplyr::select(Death, OPEN.SD, Days_snow) #selecting for variables in question
+
+survived <- snow_new %>% #creating a new dataframe from within the new dataset
+  filter(Death == 0) #filtering for only survived
+died <- snow_new %>% #creating a new dataframe from within the new dataset
+  filter(Death == 1) #filtering for only dead
+
+hares_s <- sample_n(survived, 153) #random sample of survive data
+hares_d <- sample_n(died, 153) #random sample of died data
+
+hares <- rbind(hares_s, hares_d) #putting hare_s and hares_d datasets together to make comparisons within
+
+snow_new$sqrt_sd <- sqrt(snow_new$OPEN.SD) # transforming data in all datasets
+snow_new$log_sd <- log(snow_new$OPEN.SD)
+hares$sqrt_sd <- sqrt(hares$OPEN.SD)
+hares$log_sd <- log(hares$OPEN.SD)
+hares_s$sqrt_sd <- sqrt(hares_s$OPEN.SD)
+hares_d$sqrt_sd <- sqrt(hares_d$OPEN.SD)
+hares_s$log_sd <- log(hares_s$OPEN.SD)
+hares_d$log_sd <- log(hares_d$OPEN.SD)
+snow_new$log_days <- log(snow_new$Days_snow + 1)
+hares$log_days <- log(hares$Days_snow + 1)
+```
+
+### Exploring snow depth
+First of all, I needed to perform normality tests on my key response variable, snow depth, so I used a histogram, a Shapiro-Wilks normality test (Appendix 1.2), and a Q-Q plot of the untransformed data (Figure 1). First, the histogram was skewed slightly right, which indicates non-normality. Next, the Shapiro-Wilks test produced a significant p-value of 1.886e-08 (far below our significant alpha of 0.05), meaning we reject the null hypothesis that the data is normally distributed. Finally, many of the points on the Q-Q Plot lie outside of the confidence interval, providing yet another signal of non-normality. However, a log transformation significantly improves the normality of snow depth. The histogram is much more normal, the Shapiro-Wilks test returns a p-value of 0.01612, and the Q-Q Plot has more points inside the confidence interval. The histogram has some outliers at around 2.5 log cm, while the Q-Q Plot has outliers at 39 and 249 (meaning these are more extreme than what would be seen from a normal distribution). While the data are not perfectly normal, a log transformation helps by making it approximately normal. Additionally, we can invoke the Central Limit Theorem for this data since the sample size is greater than 30 for all datasets in question, allowing us to perform parametric tests with the log-transformed snow depth. 
+
+```{r explore fig 1/2, echo = FALSE, fig.width = 9, fig.cap = "**Fig 1: Approximately normally distributed histogram and Q-Q Plot of log-transformed snow depth.** The histogram is approximately bell-shaped and peaks around the mean, indicating normality. The Q-Q Plot graphs normal quantiles against data quantiles, with black circles representing data points and the blue band representing confidence intervals. We can assume normality with a large proportion of points inside the confidence band. "}
+
+#final graph code -- only charts will be included
+# dist of y
+par(mfrow = c(1,2)) #putting
+hist(snow_new$log_sd, #calling data and variable
+     main = "Histogram of Log Snow Depth", #titling graph
+     col = "darkslateblue", #coloring bars
+     xlab = "Log-Transformed Snow Depth (Log(cm))") #labeling x axis
+
+qq_sd <- qqPlot(hares$log_sd, #calling data and variable
+                main = "Random Sample of Log Snow Depth", #labeling chart
+                ylab = "Log-Transformed Snow Depth Quantiles") #labeling x axis
+```
+
+
+### Exploring snow depth and survival
+
+Next, I used a boxplot to explore the relationship between log snow depth and survival (Figure 2). I grouped the boxes by death status (dead or survived) and plotted those groups against log snow depth. The median of both groups is generally in the middle of the box (the 'dead' group median is slightly more in the middle), and there are long tails on both, which indicates normality. Neither of these groups seems to require a transformation. There are a couple of outliers in the 'survived' data, whereas the 'dead' data shows only one outlier. Based on visual analysis, the median snow depth for the 'survived' data seems higher than that for the 'dead' data. 
+
+
+```{r explore fig 4, echo = FALSE, fig.cap = "**Fig. 2: Boxplot comparing snow depth and survival of hares.** The 'Dead' group appears slightly more normal, as its median is closer to the middle. Still, both are normally distributed, as shown by the median being mostly in the middle and the long tails of each plot. The median for the 'survived' group is higher than for the 'dead' group."}
+# y~x 2
+snow_new$Death <- as.factor(snow_new$Death) #ensuring 'Death' is read as a categorical variable
+
+ggplot(data = hares, aes(x = factor(Death), y = log_sd, group = Death)) + #calling data, defining variables, grouping by Death status
+  geom_boxplot(fill = "plum3") + #boxplot with plum3 color
+  theme_bw() + #bw theme from ggplot
+  labs(x = "Death Status", y = "Log-Transformed Snow Depth (Log(cm)", title = "Log-Transformed Snow Depth vs Death Status") + #labeling axes and graph
+  theme(axis.title = element_text(face = "bold", size = 12)) + #formatting title
+  scale_x_discrete(labels = c("Survived", "Dead")) #changing labels of boxes
+```
+
+
+### Exploring snow depth and days since snow
+
+Finally, I used a scatterplot to investigate the relationship between snow depth and the number of days since snow (Figure 3). Since number of days is a discrete variable, the graph is not entirely smooth. While there is no clear pattern between the two variables, there is no evidence to rule out my hypothesis that as log snow depth increases, the days since snow decreases. There are also some outliers around 2.5 log cm of snow depth. A log transformation of 'days since snow' made it more normally distributed despite being a discrete variable. Ultimately, the comparison made was between log-transformed snow depth and log-transformed days since snow. 
+
+```{r explore fig 3, echo = FALSE, fig.cap = "**Fig 3: Log Days Since Snow vs. Log Transformed Snow Depth.** Snow depth is continuous, whereas days is discrete, making the plot a little chunky. There is no clear pattern, but there is potentially a negative relationship (as snow depth increases, days decrease). Several outliers are seen around 2.5 log cm of snow depth. "}
+# y~x 1
+snow_new$log_days <- log(snow_new$Days_snow + 1) #transforming data
+hares$log_days <- log(hares$Days_snow + 1) #transforming data
+
+ggplot(snow_new, aes(x = log_sd, y = log_days)) + #calling data, defining x and y
+  geom_point(size=1, shape=8, color = "lightskyblue2") + #scatterplot with size 1 points and shape 8 + blue color
+  labs(x = "Log-Transformed Snow Depth (Log(cm))", y = "Log Days Since Snow", title = "Log Days Since Snow vs Log-Transformed Snow Depth") + #labeling axes and graph
+  theme_bw() #bw theme
+```
+
+<br>
+
+## Statistical Methods
+
+### Does snow depth impact survival? Checking assumptions for a two-sample t-test of the mean log snow depth for survived and dead hares.
+Our statistical analysis of the relationship between snow depth and survival involved using a two-sample t-test. This model assumes that the observations (in this case, log snow depth) from each group ('dead' and 'survived') represent a random sample, are normally distributed, and have the same variance. 
+
+We know each group comes from a random sample because I generated a random subset of the larger dataset using R to compare the two groups (Appendix 1.1) so that assumption is satisfied. 
+
+To test the normality of each group, I created a histogram (Figure 4), made a Q-Q Plot (Figure 5), and ran a Shapiro-Wilks test for each dataset. The histograms seemed normal since they were bell-shaped and centered around the medians. There are no apparent outliers. On the Q-Q Plots, many of the points are within the confidence band, conveying normality. The 'survived' plot has outliers at 39 and 69, whereas the 'died' plot has outliers at 35 and 96. Finally, the Shapiro-Wilks test generated a p-value of 0.1479 for the 'survived' group and 0.07467 for the 'died' group (Appendix 2.1). Since both values exceed our critical value of 0.05, we fail to reject the null hypothesis that the data is normally distributed. Thus, our assumption for normality is met. 
+
+To check for equal variance, I also ran a Levene's Test comparing the variance of the two groups. The null hypothesis of Levene's Test states that the variance between the two groups is equal. Upon comparing our two groups using this test, we obtained a p-value of 0.1697 (above the critical value of 0.05), which allows us to fail to reject the null hypothesis (Appendix 2.1). Hence, our condition of equal variance is satisfied. 
+
+```{r survival assumptions test, include=FALSE}
+survived <- snow_new %>% #creating a new dataframe from within the new dataset
+  filter(Death == 0) #filtering for only survived
+died <- snow_new %>% #creating a new dataframe from within the new dataset
+  filter(Death == 1) #filtering for only dead
+
+shapiro.test(hares_s$log_sd) #shapiro test
+shapiro.test(hares_d$log_sd) #shapiro test
+
+hares_s$log_sd <- log(hares_s$OPEN.SD) #transforming data
+hares_d$log_sd <- log(hares_d$OPEN.SD) #transforming data
+
+# specify response variable first, than group variable (categorical distinction between two sets of our response)
+leveneTest(hares_s$log_sd, hares_d$log_sd)
+#p value is above 0.05, so variances are equal
+```
+
+```{r survival assumptions 1, echo = FALSE, fig.height = 4, fig.width = 9, fig.cap = "**Fig. 4: Histogram conferring normality for surviving hares and dead hares.** Both charts feature a single peak centered around the median and are generally bell-shaped. No obvious outliers are present. Data from a random sample of a larger hare dataset, with both 'survived' and 'died' being the same size (n = 153). "}
+survived_hist <- ggplot(data = hares_s, aes(x = log_sd)) + #creating a ggplot using hares_s dataframe
+    geom_histogram(color = "black", fill = "seagreen", position = "identity", bins = 15) + #creating a histogram with color and fill and 15 bins
+      theme_bw() + #putting in bw theme
+      labs(x = "Log Snow Depth", y = "Frequency") + #labeling the axes
+      ggtitle("Histogram of Log Snow Depth for Surviving Hares") + #titling the graph
+      theme(axis.title = element_text(size = 10, face = "bold")) #formatting the title
+
+died_hist <- ggplot(data = hares_d, aes(x = log_sd)) + #creating a ggplot using our hares_d dataframe
+    geom_histogram(color = "black", fill = "darkseagreen", position = "identity", bins = 15) + #creating a histogram with color and fill and 15 bins
+        theme_bw() + #putting in bw theme
+        labs(x = "Log Snow Depth", y = "Frequency") + #labeling the axes
+        ggtitle("Histogram of Log Snow Depth for Dead Hares") + #titling the graph
+        theme(axis.title = element_text(size = 10, face = "bold")) #formatting the title
+
+grid.arrange(survived_hist, died_hist, ncol=2) #arranging graphs on a grid
+```
+
+```{r survival assumptions 2, echo = FALSE, fig.height = 4, fig.width = 9, fig.cap = "**Fig. 5: Q-Q Plots conveying normality for 'survived' and 'died' datasets.** 'Survived' refers to surviving hares, while 'died' refers to hares that died. The 'survived' plot has outliers at 39 and 69, whereas the 'died' plot has outliers at 35 and 96. Most black dots lie within the blue confidence bands, indicating normal distributions for both data groups. "}
+par(mfrow = c(1,2))
+qq_s <- qqPlot(hares_s$log_sd, main = "Q-Q Plot of Survived Hares", ylab = "Sqrt Snow Depth Quantiles") #making qqPlot
+qq_d <- qqPlot(hares_d$log_sd, main = "Q-Q Plot of Died Hares", ylab = "Sqrt Snow Depth Quantiles") #making qqPlot
+```
+
+
+### Is days since snow a good predictor of snow depth? Checking assumptions for a linear model of log days since snow and log snow depth.
+
+I used a linear model and a correlation test to analyze whether or not days since snow is a good predictor of snow depth. A linear model assumes that Y is a random sample for each X, Y values are independent, and the variance of each Y value is equal to the variance of the corresponding X value. Here, X is the log snow depth, and Y is the log days since snow. 
+
+Both random sampling and independent Y values result from good experimental design – we trust that this data was gathered correctly, so we can guess these assumptions are met.  
+
+We can analyze for equal variance using the residual plots. We can see that the 'Residuals vs. Fitted' plot (Figure 6) does not have a distinct pattern, which indicates that the variance for each Y value is equal to the variance of the corresponding X value. 
+
+```{r temp assumptions 2, echo = FALSE, fig.cap = "**Fig. 6: Diagnostic Plots of Regression.** Top left plots residuals vs fitted values. The distribution of points does not follow a distinct shape, indicating that the assumption of equal variances is met. Top right plots standardized residuals vs theoretical quantiles. The points don't follow the line, which implies that the residuals of the linear model of days since snow and log snow depth are not normally distributed."}
+snow_new$log_days <- log(snow_new$Days_snow + 1) #transforming data
+hares$log_days <- log(hares$Days_snow + 1) #transforming data
+
+snow_new_sub <- snow_new %>% #making new data subset
+  dplyr::select(log_sd, log_days) #selecting for categories of interest
+
+lm_days <- lm(log_days ~ log_sd, data=snow_new_sub) #creating linear model
+par(mfrow=c(2,2)) #plotting diagnostic plots next to one another
+plot(lm_days, main= "Dianostic plot of regression") #plotting and naming 
+```
+
+<br>
+
+## Results
+
+### Does snow depth impact survival? Investigating the mean log snow depth for survived and dead hares using a two sample t-test.
+
+Given that our variances of normality and equal variance are met, we can run a two-sample t-test comparing the mean log snow depth for the 'survived' and 'dead' hare groups. The null hypothesis and alternative hypothesis of a two-sample t-test are as follows: 
+
+-   $H_0 : \mu_{Survived} = \mu_{Died}$
+
+-   $H_A : \mu_{Survived} \neq \mu_{Died}$
+
+Essentially, the null hypothesis states that there is no difference in the mean log snow depth (log cm) for survived and dead hares, and the alternative says that there is a significant difference. 
+
+The two-sample-test returned a test statistic (t) of 2.4264 based on 304 degrees of freedom (Appendix 2.1). Next, the test provided 95% confidence that the actual difference between the two groups lies between 0.01511 and 0.14477; since this CI does not contain zero, we are 95% confident that there is a significant difference between 'survived' and 'died.' Finally, the test produced a p-value of 0.01583, below our critical value of 0.05. This signifies that we can reject the null hypothesis and assume that there is a significant difference in log snow depth (log cm) between the two groups. 2The mean snow depth for the 'survived' and 'died' groups was estimated to be 3.6012 and 3.5213, respectively.
+
+We can use this information to analyze the boxplot (Figure 7) comparing log snow depth for the 'survived' and 'died' groups more critically. From a visual analysis, it is clear that the log snow depth is generally higher for the 'survived' group (specifically, the median, 1st quantile, and 3rd quantile are all higher for 'survived'). Now that we know this difference is significant, we can assume that the log snow depth for the 'survived' group is significantly higher than that for the 'died' group.  
+
+```{r survival test 1, include = FALSE}
+t.test(hares_s$log_sd, hares_d$log_sd, # running a two-sample t test on response variable, then group variable
+       var.equal = TRUE) # specifying that variances are equal
+#use this b/c normal dist, equal variances (parametric test)
+```
+
+```{r survival test 2, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = "**Fig. 7: Boxplot comparing log snow depth for survived hares and dead hares.** Survived group contains several outliers on either end of the data, and dead group contains a single outlier on the higher part of the data. Log snow depth is generally higher for the survived group. "}
+hares$Death <- as.factor(hares$Death) #reading Death as factor
+
+ggplot(data = hares, aes(x = factor(Death), y = log_sd, group = Death, fill = Death)) + #calling data, defining x and y, making sure fill color is based on death status
+  geom_boxplot() + #calling boxplot
+  theme_bw() + #bw theme
+  labs(x = "Death Status", y = "Log-Transformed Snow Depth (Log(cm))", title = "Log-Transformed Snow Depth vs Death Status") + #labeling graph and axes
+  theme(axis.title = element_text(face = "bold", size = 12)) + #formatting axes titles
+  scale_x_discrete(labels = c("Survived", "Dead")) + #naming boxes specific things
+  theme(legend.position = "none") + #removing legend from graph (not needed)
+  scale_fill_manual(values = c("mediumturquoise", "cyan4")) + #coloring boxes
+  scale_color_manual(values = c("black", "black")) #outlining boxes
+```
+
+
+### Is days since snow a good predictor of snow depth? A linear model of log days since snow and log snow depth.
+
+Since our assumptions of randomness, independence, and equal variance are met for log snow depth and log days since snow, we can build a linear model to investigate the relationship between these two variables. The null hypothesis of a linear model if that there is no correlation between X and Y. 
+
+The linear model returns a test statistic (F) of 446.3 on 1 and 14734 degrees of freedom. The adjusted R-squared is 0.02933, which indicates that 2.933% of the variation in the log snow depth (Y) can be explained by the days since snow (X). The slope of the model is estimated to be -0.47456 (log days)/(log cm of snow depth), and the intercept of the line is estimated at 3.13002 (log days). The equation for this linear model would thus be as follows: 
+
+$Y_i = 3.12002 -0.47456X_i$
+
+We can clearly see this positive intercept and negative slope on the graph below, represented by the dark blue line. The p-value of the linear model is < 2.2e-16 (below our alpha value of 0.05), suggesting that we reject the null hypothesis and can assume that snow depth can be used to predict days since snow (and vice versa).
+
+To determine the correlation coefficient, we need to conduct a Spearman's correlation test. This non-parametric test is used because even after a log transformation, 'days since snow' is not quite normal enough to conduct a parametric test (Appendix 1.2); the comparison thus uses untransformed data. This test's null and alternative hypotheses are as follows, with $\rho$ equaling the correlation coefficient (r): 
+
+-   $H_0 : \rho = 0$
+
+-   $H_A : \rho \neq 0$
+
+This non-parametric test is used because even after a log transformation, 'days since snow' is not quite normal enough to conduct a parametric test (Appendix 1.2). The comparison thus uses untransformed data. Comparing snow depth and days across the entire dataset, the test returns a test statistic (t) of -21.125 with 14734 degrees of freedom. With 95% confidence, the correlation coefficient is between -0.18708 and -0.15574. The actual value is estimated at -0.17146, with a p-value of < 2.2e-16. This is below our critical (alpha) value of 0.05, meaning we can reject the null hypothesis and say that the correlation between days since snow and snow depth is not zero. 
+
+```{r days test, include = FALSE}
+summary(lm_days) #summarizing days since snow linear model
+
+snow_new$log_days <- log(snow_new$Days_snow + 1) #transforming data
+hares$log_days <- log(hares$Days_snow + 1) #transforming data
+
+snow_new_sub <- snow_new %>% #calling new dataset
+  dplyr::select(log_sd, log_days) #selecting for categories of interest
+```
+
+
+```{r, include = FALSE}
+cor.test(snow_new$OPEN.SD, #y value #use untransformed data
+         snow_new$Days_snow, #other numeric variable
+         method = "spearman", #non parametric correlation test
+         alternative = "two.sided")
+
+#correlation is significant since p < 0.05
+```
+
+
+
+```{r days visual test, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = "**Fig. 8: Scatterplot of Log Days Since Snow vs. Log Snow Depth with Correlation Line.** Correlation line (dark blue) has an equation of $Y_i = 3.12002 -0.47456X_i$ . The correlation coefficient, r, is approximately -0.17, indicating a negative linear relationship. Gray regions around the line represent confidence intervals."}
+snow_new$log_days <- log(snow_new$Days_snow + 1) #transforming data
+hares$log_days <- log(hares$Days_snow + 1) #transforming data
+
+ggplot(snow_new_sub, aes(x = log_sd, y = log_days)) + #calling data and defining x and y
+  geom_point(size=1, shape=8, color = "lightblue") + #scatterplot, color and shape specified
+  theme_light() + #light theme
+  stat_smooth(method = "lm", col = "royalblue4") + #doing linear model on graph
+  labs(x = "Log Snow Depth (log cm)", y = "Log Days Since Snow", title = "Log Days Since Snow vs Log-Transformed Snow Depth") #naming plot and axes
+```
+
+
+<br>
+
+## Discussion
+
+From test 1, we learned that the log snow depth for the 'survived' group is significantly higher than that for the 'died' group. When investigating whether or not snow depth impacts survival, a higher snow depth seemingly improves the chances of survival for snowshoe hares in the boreal forests. While the mean log snow depth for the 'survived' group was only about 0.08 log cm higher than the 'died' group, this is still a significant value. This difference can likely be attributed to the role that camouflage plays in snowshoe hare survival. Their fur changes color seasonally; through gradual shedding and hair replacement, they have white fur in the winter and brown fur in the summer (National Park Service). This white fur allows them to blend in with the snow, helping them evade predation. However, with less snow depth, the hares poorly blend with the environment; this will make the hares more susceptible to predators. This has significant implications for the boreal forest ecosystem, especially with the growing severity of climate change. One pronounced effect of climate change is global atmospheric warming, which could cause snow to melt faster. This could lead to higher death rates among snowshoe hares, which would have "disproportionate" impacts on other species in the ecosystem (National Wildlife Federation). As a keystone species, a significantly smaller hare population could bring the boreal forest into a state of disequilibrium.
+
+For test 2, we understood that there is a significant, negative correlation between log snow depth and log days since snow. While the correlation is not that strong (r = -0.17), its significant nature allows us to use this relationship to predict days since snow using snow depth (or vice versa). This also suggests that longer gaps between snow events cause a decrease in snow depth, which makes sense in a physical context – snow melts! What's more, climate change has the dangerously unpredictable effect of changing the frequency and severity of weather events (NASA). If a prolonged drought were to hit boreal forests (leading to many days without snow), snow depth would likely decrease an alarming amount, putting snowshoe hares at extreme risk. As mentioned above, this could potentially devastate the boreal ecosystem. 
+
+While this study was extremely comprehensive in its number of observations and the relatively long period over which the data was collected, it has some limitations. First, it was only conducted in a single boreal region of Canada. To improve the applications of our findings, the study site should be expanded to other boreal areas. Additionally, it would be beneficial to delineate between different sections of the forest when documenting captured or found hares. Then, we could analyze various parts of the ecosystem, leading to further study regarding which features confer better hare survival. Other abiotic/biotic factors may influence hare survival besides snow depth, like proximity to water sources. Further data collection could confirm or deny the influence of other factors.  
+
+Overall, while this data merely analyzes a single species in a unique type of ecosystem, the takeaways from the study are hugely important: climate change poses significant threats to the natural world, which will eventually affect the built world. We must study the source of such threats and the effects of our warming planet on ecosystems everywhere. While this research doesn't do much to stop the problems of climate change at the source, advancing ecological knowledge allows us to adapt and help ecosystems survive the coming change.
+
+## References
+
+```{r, include = FALSE}
+citation("readr")
+citation("tidyverse")
+citation("ggplot2")
+citation("psych")
+citation("car")
+citation("ggpubr")
+citation("multcomp")
+citation("pwr")
+citation("gridExtra")
+citation("cowplot")
+citation("multcomp")
+```
+### Sources and Dataset
+
+Extreme weather. (n.d.). NASA Science. Retrieved June 8, 2024, from https://science.nasa.gov/climate-change/extreme-weather/
+
+Leblond, M., Boulanger, Y., Pascual Puigdevall, J., & St-Laurent, M.-H. (2022). There is still time to reconcile forest management with climate-driven declines in habitat suitability for boreal caribou. Global Ecology and Conservation, 39, e02294. https://doi.org/10.1016/j.gecco.2022.e02294
+
+NETN species spotlight. (n.d.). Snowshoe Hare (U.S. National Park Service). Retrieved June 7, 2024, from https://www.nps.gov/articles/netn-species-spotlight-snowshoe-hare.htm
+
+Peers, M. J. L., Majchrzak, Y. N., Menzies, A. K., Studd, E. K., Bastille-Rousseau, G., Boonstra, R., Humphries, M., Jung, T. S., Kenney, A. J., Krebs, C. J., Murray, D. L., & Boutin, S. (2020). Climate change increases predation risk for a keystone species of the boreal forest. Nature Climate Change, 10(12), 1149–1153. https://doi.org/10.1038/s41558-020-00908-4
+
+Snowshoe Hare. (n.d.). National Wildlife Federation. Retrieved June 7, 2024, from https://www.nwf.org/Educational-Resources/Wildlife-Guide/Mammals/Snowshoe-Hare
+
+Snowshoe Hare (U.S. National Park Service). (n.d.). Retrieved June 7, 2024, from https://www.nps.gov/articles/snowshoe-hare.htm
+
+
+### Packages
+
+ Wickham H, Hester J, Bryan J (2024). _readr: Read Rectangular Text Data_. R package version 2.1.5,
+  <https://CRAN.R-project.org/package=readr>.
+  
+ Wickham H, Averick M, Bryan J, Chang W, McGowan LD, François R, Grolemund G, Hayes A, Henry L,
+  Hester J, Kuhn M, Pedersen TL, Miller E, Bache SM, Müller K, Ooms J, Robinson D, Seidel DP, Spinu
+  V, Takahashi K, Vaughan D, Wilke C, Woo K, Yutani H (2019). “Welcome to the tidyverse.” _Journal
+  of Open Source Software_, *4*(43), 1686. doi:10.21105/joss.01686
+  <https://doi.org/10.21105/joss.01686>.
+  
+H. Wickham. ggplot2: Elegant Graphics for Data Analysis. Springer-Verlag New York, 2016.
+
+William Revelle (2024). _psych: Procedures for Psychological, Psychometric, and Personality
+  Research_. Northwestern University, Evanston, Illinois. R package version 2.4.3,
+  <https://CRAN.R-project.org/package=psych>.
+  
+Fox J, Weisberg S (2019). _An R Companion to Applied Regression_, Third edition. Sage, Thousand
+  Oaks CA. <https://socialsciences.mcmaster.ca/jfox/Books/Companion/>.
+  
+Kassambara A (2023). _ggpubr: 'ggplot2' Based Publication Ready Plots_. R package version 0.6.0,
+  <https://CRAN.R-project.org/package=ggpubr>.
+  
+  Hothorn T, Bretz F, Westfall P (2008). “Simultaneous Inference in General Parametric Models.”
+  _Biometrical Journal_, *50*(3), 346-363.
+  
+  Champely S (2020). _pwr: Basic Functions for Power Analysis_. R package version 1.3-0,
+  <https://CRAN.R-project.org/package=pwr>.
+  
+  Auguie B (2017). _gridExtra: Miscellaneous Functions for "Grid" Graphics_. R package version 2.3,
+  <https://CRAN.R-project.org/package=gridExtra>.
+  
+   Wilke C (2024). _cowplot: Streamlined Plot Theme and Plot Annotations for 'ggplot2'_. R package
+  version 1.1.3, <https://CRAN.R-project.org/package=cowplot>.
+  
+   Hothorn T, Bretz F, Westfall P (2008). “Simultaneous Inference in General Parametric Models.”
+  _Biometrical Journal_, *50*(3), 346-363.
+
+
+## Appendix
+
+Here is all the code used.
+
+### Section 1: Exploratory Data Analysis
+
+#### Subsection 1: Data Sorting
+```{r}
+snow_new <- snow %>% 
+  dplyr::select(Death, OPEN.SD, Days_snow)
+
+snow_new$Death <- as.factor(snow_new$Death)
+
+survived <- snow_new %>% #creating a new dataframe from within the new dataset
+  filter(Death == 0) #filtering for only survived
+died <- snow_new %>% #creating a new dataframe from within the new dataset
+  filter(Death == 1) #filtering for only dead
+
+hares_s <- sample_n(survived, 153) 
+hares_d <- sample_n(died, 153)
+
+hares <- rbind(hares_s, hares_d)
+```
+
+#### Subsection 2: Data Cleaning and Normality Tests
+```{r}
+hist(hares$OPEN.SD)
+qqPlot(hares$OPEN.SD)
+shapiro.test(hares$OPEN.SD)
+#data is not normal, need to transform
+
+snow_new$sqrt_sd <- sqrt(snow_new$OPEN.SD)
+snow_new$log_sd <- log(snow_new$OPEN.SD)
+hares$sqrt_sd <- sqrt(hares$OPEN.SD)
+hares$log_sd <- log(hares$OPEN.SD)
+hares_s$sqrt_sd <- sqrt(hares_s$OPEN.SD)
+hares_d$sqrt_sd <- sqrt(hares_d$OPEN.SD)
+hares_s$log_sd <- log(hares_s$OPEN.SD)
+hares_d$log_sd <- log(hares_d$OPEN.SD)
+#transforming both sample and data by adding new column w/ sqrt of snow depth and log of snow depth
+
+hist(hares$log_sd)
+qqPlot(hares$log_sd)
+shapiro.test(hares$log_sd)
+# data is seemingly MORE normal with a log transformation
+
+hist(hares$sqrt_sd)
+qqPlot(hares$sqrt_sd, main = "Random Sample of Square-Root Transformed Snow Depth")
+shapiro.test(hares$sqrt_sd)
+
+hist(hares_s$log_sd)
+qqPlot(hares_s$log_sd)
+shapiro.test(hares_s$log_sd)
+
+hist(hares_d$log_sd)
+qqPlot(hares_d$log_sd)
+shapiro.test(hares_d$log_sd)
+
+hares$sqrt_days <- sqrt(hares$Days_snow)
+snow_new$log_days <- log(snow_new$Days_snow + 1)
+hares$log_days <- log(hares$Days_snow + 1)
+
+hist(hares$sqrt_days)
+qqPlot(hares$sqrt_days)
+shapiro.test(hares$sqrt_days)
+
+hist(hares$log_days)
+qqPlot(hares$log_days)
+shapiro.test(hares$log_days)
+
+#log transformation seemingly makes Days_snow more normal... but it still isn't that normal
+```
+
+
+#### Subsection 3: Exploratory Graphs
+```{r}
+#final graph code -- only charts will be included
+# dist of y
+par(mfrow = c(1,2)) #putting
+hist(snow_new$log_sd, main = "Histogram of Log Snow Depth", col = "darkslateblue", xlab = "Log-Transformed Snow Depth (Log(cm))")
+qq_sd <- qqPlot(hares$log_sd, main = "Random Sample of Log Snow Depth", ylab = "Log-Transformed Snow Depth Quantiles")
+
+#graph for y~x1 (numeric)
+ggplot(snow_new, aes(x = sqrt_sd, y = Days_snow)) +
+  geom_point(size=1, shape=8, color = "lightblue") +
+  labs(x = "Log Transformed Snow Depth (Log(cm))", y = "Average Temperature (Degrees Celcius)", title = "Average Temperature vs Log Transformed Snow Depth")
+
+#graph for y~x2 (categorical)
+snow_new$Death <- as.factor(snow_new$Death) #ensuring 'Death' is read as a categorical variable
+
+ggplot(data = snow_new, aes(x = Death, y = sqrt_sd)) +
+  geom_boxplot(fill = "orchid3") +
+  theme_classic() +
+  labs(x = "Death Status (0 is survived, 1 is dead)", y = "Sqrt Transformed Snow Depth (cm)", title = "Sqrt Transformed Snow Depth vs Death Status") +
+  theme(axis.title = element_text(face = "bold", size = 12))
+```
+
+
+
+### Section 2: Statistical Methods
+#### Subsection 1: Two-Sample T-Test
+```{r}
+#testing assumptions
+snow_new$log_days <- log(snow_new$Days_snow + 1)
+hares$log_days <- log(hares$Days_snow + 1)
+
+snow_new_sub <- snow_new %>% 
+  dplyr::select(log_sd, log_days)
+
+lm_days <- lm(log_days ~ log_sd, data=snow_new_sub) 
+par(mfrow=c(2,2))
+plot(lm_days, main= "Dianostic plot of regression")
+
+survived <- snow_new %>% #creating a new dataframe from within the new dataset
+  filter(Death == 0) #filtering for only survived
+died <- snow_new %>% #creating a new dataframe from within the new dataset
+  filter(Death == 1) #filtering for only dead
+
+shapiro.test(hares_s$log_sd) #shapiro test
+shapiro.test(hares_d$log_sd) #shapiro test
+
+hares_s$log_sd <- log(hares_s$OPEN.SD) #transforming data
+hares_d$log_sd <- log(hares_d$OPEN.SD) #transforming data
+
+# specify response variable first, than group variable (categorical distinction between two sets of our response)
+leveneTest(hares_s$log_sd, hares_d$log_sd)
+#p value is above 0.05, so variances are equal
+
+survived_hist <- ggplot(data = hares_s, aes(x = log_sd)) + #creating a ggplot using hares_s dataframe
+    geom_histogram(color = "black", fill = "seagreen", position = "identity", bins = 15) + #creating a histogram with color and fill and 15 bins
+      theme_bw() + #putting in bw theme
+      labs(x = "Log Snow Depth", y = "Frequency") + #labeling the axes
+      ggtitle("Histogram of Log Snow Depth for Surviving Hares") + #titling the graph
+      theme(axis.title = element_text(size = 10, face = "bold")) #formatting the title
+
+died_hist <- ggplot(data = hares_d, aes(x = log_sd)) + #creating a ggplot using our hares_d dataframe
+    geom_histogram(color = "black", fill = "darkseagreen", position = "identity", bins = 15) + #creating a histogram with color and fill and 15 bins
+        theme_bw() + #putting in bw theme
+        labs(x = "Log Snow Depth", y = "Frequency") + #labeling the axes
+        ggtitle("Histogram of Log Snow Depth for Dead Hares") + #titling the graph
+        theme(axis.title = element_text(size = 10, face = "bold")) #formatting the title
+
+grid.arrange(survived_hist, died_hist, ncol=2) #arranging graphs on a grid
+
+
+par(mfrow = c(1,2))
+qq_s <- qqPlot(hares_s$log_sd, main = "qqPlot of Survived Hares", ylab = "Sqrt Snow Depth Quantiles") #making qqPlot
+qq_d <- qqPlot(hares_d$log_sd, main = "qqPlot of Died Hares", ylab = "Sqrt Snow Depth Quantiles") #making qqPlot
+
+
+```
+
+#### Subsection 2: Linear Regression
+```{r}
+#testing assumptions
+snow_new$log_days <- log(snow_new$Days_snow + 1)
+hares$log_days <- log(hares$Days_snow + 1)
+
+snow_new_sub <- snow_new %>% 
+  dplyr::select(log_sd, log_days)
+
+pairs.panels(snow_new_sub, #only numeric data in question
+             density = TRUE, #adds a density line to histogram (black line)
+             cor = TRUE, #adds correlation coefficient, r (value in top right)
+             lm = TRUE, #adds fitted line (red line)
+             hist.col = "orchid4") 
+
+lm_days <- lm(log_days ~ log_sd, data=snow_new_sub) #creating linear model
+par(mfrow=c(2,2)) #plotting diagnostic plots next to one another
+plot(lm_days, main= "Dianostic plot of regression") #plotting and naming 
+```
+
+
+### Section 3: Results
+
+#### Subsection 1: T-Test
+```{r}
+t.test(hares_s$log_sd, hares_d$log_sd, # running a two-sample t test on response variable, then group variable
+       var.equal = TRUE) # specifying that variances are equal
+#use this b/c normal dist, equal variances (parametric test)
+
+hares$Death <- as.factor(hares$Death) #reading Death as factor
+
+ggplot(data = hares, aes(x = factor(Death), y = log_sd, group = Death, fill = Death)) + #calling data, defining x and y, making sure fill color is based on death status
+  geom_boxplot() + #calling boxplot
+  theme_bw() + #bw theme
+  labs(x = "Death Status", y = "Log-Transformed Snow Depth (Log(cm))", title = "Log-Transformed Snow Depth vs Death Status") + #labeling graph and axes
+  theme(axis.title = element_text(face = "bold", size = 12)) + #formatting axes titles
+  scale_x_discrete(labels = c("Survived", "Dead")) + #naming boxes specific things
+  theme(legend.position = "none") + #removing legend from graph (not needed)
+  scale_fill_manual(values = c("mediumturquoise", "cyan4")) + #coloring boxes
+  scale_color_manual(values = c("black", "black")) #outlining boxes
+```
+
+
+
+#### Subsection 2: Linear Regression
+```{r}
+summary(lm_days) #summarizing days since snow linear model
+
+snow_new$log_days <- log(snow_new$Days_snow + 1) #transforming data
+hares$log_days <- log(hares$Days_snow + 1) #transforming data
+
+snow_new_sub <- snow_new %>% #calling new dataset
+  dplyr::select(log_sd, log_days) #selecting for categories of interest
+
+cor.test(snow_new$OPEN.SD, #y value #use untransformed data
+         snow_new$Days_snow, #other numeric variable
+         method = "spearman", #non parametric correlation test
+         alternative = "two.sided")
+
+#correlation is significant since p < 0.05
+
+snow_new$log_days <- log(snow_new$Days_snow + 1) #transforming data
+hares$log_days <- log(hares$Days_snow + 1) #transforming data
+
+ggplot(snow_new_sub, aes(x = log_sd, y = log_days)) + #calling data and defining x and y
+  geom_point(size=1, shape=8, color = "lightblue") + #scatterplot, color and shape specified
+  theme_light() + #light theme
+  stat_smooth(method = "lm", col = "royalblue4") + #doing linear model on graph
+  labs(x = "Log Snow Depth (log cm)", y = "Log Days Since Snow", title = "Log Days Since Snow vs Log-Transformed Snow Depth") #naming plot and axes
+```
+

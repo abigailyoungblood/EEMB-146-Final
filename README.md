@@ -1,6 +1,6 @@
 # EEMB 146 Final Project
 
-This is the final project for an upper-division biometry course, EEMB 146, focusing on ecological data analysis and modeling using R.
+This is my final project for an upper-division biometry course, EEMB 146, focusing on ecological data analysis and modeling using R.
 
 ## Project Overview
 
